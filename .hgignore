@@ -1,0 +1,71 @@
+syntax:glob
+
+# stuffs
+build*
+Debug/*.exe
+*.o
+
+
+# Vim + notepad++
+*~
+*.swp
+.~lock*#
+
+# temp save of xlsx
+~*.xlsx
+
+# Apple/Xcodek
+syntax: glob
+*.DS_Store
+xcode/*.xcodeproj/*.pbxuser
+xcode/*.xcodeproj/*.perspective*
+xcode/*.xcodeproj/*.mode*
+xcode/*.xcodeproj/xcuserdata/*
+*.xcuserstate
+
+syntax: regexp
+^build$
+^core_bak$
+
+# Ignore visual studio files
+
+syntax: glob
+*/*.exe
+*.obj
+*.user
+*.aps
+*.pdb
+*.pch
+*.nativecodeanalysis.xml
+*.lastcodeanalysissucceeded
+*.nativecodeanalysis.all.xml
+# *msvc*.exe
+*.unsuccessfulbuild
+*.vspscc
+*.vshost.*
+*_i.c
+*_p.c
+*.ncb
+*.suo
+*.tlb
+*.tlh
+*.bak
+*.cache
+*.ilk
+*.log
+*.tlog
+*.idb
+*.sdf
+*.opensdf
+*.embed.*
+*.intermediate.*
+*.lastbuildstate
+*_manifest.rc
+*.ipch
+*.lib
+*.sbr
+*.scc
+obj/
+*.vcxproj
+*.vcxproj.filters
+
