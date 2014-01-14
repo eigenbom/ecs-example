@@ -33,6 +33,11 @@ public:
 
 	// Returns id()!=INVALID_ID
 	operator bool();
+
+	// Shorthand for common components
+	Transform& transform(){	return get<Transform>(); }
+	Health& health(){ return get<Health>(); }
+	Physics& physics(){ return get<Physics>(); }
 	
 protected:
 

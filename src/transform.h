@@ -3,12 +3,14 @@
 #include "component.h"
 #include <sstream>
 
+struct vec2 { float x, y; };
 struct Transform: public Component<Transform> {
 	static const char* Name(){ return "Transform"; }
 
 	float x, y;
 
 	Transform(float x = 0.f, float y = 0.f) :x(x), y(y){}
+	Transform(const vec2& v) :x(v.x), y(v.y){}
 	std::string what() {
 		std::ostringstream oss;
 		oss << "transform {";

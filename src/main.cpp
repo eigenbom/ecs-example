@@ -139,11 +139,12 @@ int main(int argc, char** argv[])
 	// that wants to know about it
 	for (ISystem* sys: std::list<ISystem*>{ &healthSystem, &physicsSystem }){
 		AttachEntityToSystem(e1, sys, ComponentTypeList());
-	}
-
+	}	
 	es.sync();
 
-	es.printDebugInfo(std::cout);
+	// component access shorthand
+	es.lookup(id).transform() = vec2{ 0, 0 };
+	es.lookup(id).physics().vx *= 0.9f; // slow down
 	
 	// test if entity removal signals systems
 	es.remove(id);
