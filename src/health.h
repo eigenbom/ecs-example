@@ -18,9 +18,6 @@ struct Health: public Component<Health> {
 		oss << "}";
 		return oss.str();
 	}
-
-	ID id;
-	ID entity;
 };
 
 #endif

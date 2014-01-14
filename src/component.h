@@ -21,6 +21,9 @@ protected:
 
 template <typename Derived>
 struct Component : public BaseComponent {
+	ID id;
+	ID entity;
+
 	/// Used internally for registration.
 	static int Index(){
 		static unsigned int index = sComponentIndex++;

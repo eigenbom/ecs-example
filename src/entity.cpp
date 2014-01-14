@@ -1,7 +1,7 @@
 #include "entity.h"
 #include <iostream>
 
-Entity::Entity() :id(INVALID_ID){}
+Entity::Entity() :mES(nullptr), id(INVALID_ID){}
 
 Entity::Entity(EntitySystem* es) : mES(es), id(INVALID_ID) {
 
@@ -37,8 +37,8 @@ std::ostream& operator<<(std::ostream& out, Entity& e){
 	return out;
 }
 
-void Entity::removeAllComponents(){
-	removeComponents(ComponentTypeList());
+void Entity::removeAllComponents(bool immediately){
+	removeComponents(immediately, ComponentTypeList());
 }
 
 EntitySystem::EntityView::Iterator::Iterator(EntitySystem* es, int i) :es(es), i(i){}
@@ -89,12 +89,14 @@ EntitySystem::~EntitySystem(){
 	for (PackedArrayBase* b : mComponents) delete b;
 }
 
+void EntitySystem::addSystem(ISystem* system){
+	mSystems.push_back(system);
+}
+
 /// Create a new entity
-/// The entity won't appear in the list until sync() is called
 Entity& EntitySystem::create(){
 	Entity proto(this);
 	proto.clear();
-
 	ID id = mEntities.add(proto);
 	return mEntities.lookup(id);
 }
@@ -125,11 +127,29 @@ EntitySystem::EntityView EntitySystem::entities(){
 	return EntityView(this);
 }
 
+template <typename First> void RemoveEntityFromSystem(Entity& e, ISystem* sys, const TypeList<First>& tl){
+	if (e.has<First>() && sys->implements(First::Index())){
+		sys->cleanup(e);
+	}
+}
+
+template <typename First, typename... Rest> void RemoveEntityFromSystem(Entity& e, ISystem* sys, const TypeList<First, Rest...>& tl){
+	if (e.has<First>() && sys->implements(First::Index())){
+		sys->cleanup(e);
+	}
+	if (sizeof...(Rest)){
+		RemoveEntityFromSystem(e, sys, TypeList<Rest...>());
+	}
+}
+
 void EntitySystem::sync(){	
 	for (ID id : mEntitiesToBeRemoved){
 		if (mEntities.has(id)){
 			Entity& e = mEntities.lookup(id);
-			e.removeAllComponents();
+			for (ISystem* sys : mSystems){
+				RemoveEntityFromSystem(e, sys, ComponentTypeList());
+			}
+			e.removeAllComponents(true);
 			e.clear();
 			mEntities.remove(id);
 		}
@@ -143,7 +163,7 @@ void EntitySystem::sync(){
 void EntitySystem::printDebugInfo(std::ostream& out){
 	out << "EntitySystem\n";
 	out << "------------------------\n";
-	out << "#Entities: " << mEntities.size() << " (" << (mEntities.objects().bytes()/1024) << "kb) " << std::endl;
+	out << mEntities.size() << " entities (" << (mEntities.objects().bytes() / 1024) << "kb) " << std::endl;
 	printDebugInfoForComponents(out, ComponentTypeList());
 	out << "------------------------\n";
 }
