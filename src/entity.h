@@ -5,6 +5,7 @@
 
 #include "all_components.h"
 #include "packedarray.h"
+#include "isystem.h"
 
 static const int MAX_ENTITIES = 0xffff;
 
@@ -12,8 +13,6 @@ class EntitySystem;
 class Entity {
 public:
 	ID id;
-
-	// TODO: This empty constructor is only needed while Entity backend is vector
 	Entity(); 
 
 	// Add a component to the entity
@@ -27,10 +26,10 @@ public:
 	template <typename C>	bool has();
 
 	// Remove component
-	template <typename C>	void remove();
+	template <typename C>	void remove(bool immediately=false);
 
 	// Remove all components
-	void removeAllComponents();
+	void removeAllComponents(bool immediately = false);
 
 	// Returns id()!=INVALID_ID
 	operator bool();
@@ -41,8 +40,8 @@ protected:
 	void clear();
 		
 	// Helpers to help remove lots of components
-	template <typename First> void removeComponents(const TypeList<First>& tl);
-	template <typename First, typename... Rest> void removeComponents(const TypeList<First, Rest...>& tl);
+	template <typename First> void removeComponents(bool immediately, const TypeList<First>& tl);
+	template <typename First, typename... Rest> void removeComponents(bool immediately, const TypeList<First, Rest...>& tl);
 
 	ID mComponents[NUM_COMPONENTS];
 	bool mHasComponent[NUM_COMPONENTS];
@@ -116,6 +115,10 @@ protected:
 public:
 	EntitySystem();
 	~EntitySystem();
+
+	// Add systems
+	// EntitySystem doesn't own it
+	void addSystem(ISystem* system);
 	
 	// Create a new entity immediately
 	Entity& create();
@@ -178,13 +181,14 @@ protected:
 
 protected:
 	PackedArray<Entity> mEntities;
-	std::vector<PackedArrayBase*> mComponents;
+	std::vector<PackedArrayBase*> mComponents;	
+	std::vector<ISystem*> mSystems;
 	friend class Entity;
 
 	std::vector<ID> mEntitiesToBeRemoved;
 	std::vector<std::vector<ID> > mComponentsToBeRemoved;
 };
 
-#include "entity_impl.h"
+#include "entity.inl"
 
 #endif

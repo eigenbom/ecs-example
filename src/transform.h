@@ -17,9 +17,6 @@ struct Transform: public Component<Transform> {
 		oss << "}";
 		return oss.str();
 	}
-
-	ID id;
-	ID entity;
 };
 
 #endif

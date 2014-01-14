@@ -45,9 +45,6 @@ struct Inventory: public Component<Inventory> {
 		oss << "}";
 		return oss.str();
 	}
-
-	ID id;
-	ID entity;
 };
 
 
