@@ -9,6 +9,11 @@ struct Physics : public Component<Physics> {
 	float vx, vy;
 	float oldx, oldy;
 
+	// Physics now manages a resource
+	// so it should implement the rule of 4
+	struct Thing { };
+	Thing* thing;
+
 	Physics(float vx = 0.f, float vy = 0.f) :vx(vx), vy(vy){}
 	std::string what() {
 		std::ostringstream oss;

@@ -9,7 +9,7 @@
 #include "component.h"
 
 // A simple resizable array for PODs
-// Unlike vector() doesn't call default constructors etc
+// Unlike vector() doesn't initialise until it wants to
 template <typename T>
 class StaticArray {
 public:
@@ -24,7 +24,14 @@ public:
 
 	void set(unsigned int index, const T& t){
 		assert(index*sizeof(T) < mData.size());
-		*(T*)&mData[index * sizeof(T)] = t;
+		// Call the copy constructor to initialise everything
+		// ((T*)&mData[index * sizeof(T)])->T(t); 
+
+		// create a new object in the buffer
+		// Calls copy constructor
+		new(&mData[index * sizeof(T)])T(t);
+
+		// *(T*)&mData[index * sizeof(T)] = t;
 	}
 
 	unsigned int capacity() const {
@@ -39,44 +46,6 @@ public:
 protected:
 	std::vector<char> mData; // just some bytes 
 };
-
-
-/*
-// A simple stupid resizable array for PODs
-// Doesn't call default constructors
-class StaticArray {
-public:
-	template <typename T>
-	void accommodate(unsigned int size){
-		mData.resize(size * sizeof(T));
-	}
-
-	template <typename T>
-	T& get(unsigned int index){
-		assert(index*sizeof(T) < mData.size());
-		return *(T*)&mData[index * sizeof(T)];
-	}
-
-	template <typename T>
-	void set(unsigned int index, const T& t){
-		assert(index*sizeof(T) < mData.size());
-		*(T*)&mData[index * sizeof(T)] = t;
-	}
-
-	template <typename T>
-	unsigned int capacity() const {
-		return (unsigned int)(mData.size() / sizeof(T));
-	}
-
-	// Number of bytes used by this array
-	unsigned int bytes() const {
-		return (unsigned int)mData.size();
-	}
-
-protected:
-	std::vector<char> mData; // just some bytes 
-};
-*/
 
 class PackedArrayBase {
 public:
@@ -89,8 +58,7 @@ public:
 // (based on bitsquids packedarray)
 // POST: The first ID is always 0
 template <typename T>
-class PackedArray: public PackedArrayBase {
-		
+class PackedArray : public PackedArrayBase {
 public:
 	PackedArray(){
 		mObjects.accommodate(MAX_OBJECTS);
@@ -98,12 +66,12 @@ public:
 	}
 
 	~PackedArray(){
-		
+
 	}
 
 	bool has(ID id) {
 		Index &in = mIndices[id & INDEX_MASK];
-		return in.id==id && in.index!=USHRT_MAX;
+		return in.id == id && in.index != USHRT_MAX;
 	}
 
 	T& lookup(ID id) {
@@ -112,17 +80,18 @@ public:
 
 	// Add a new object 
 	// by optionally copying a prototype
-	ID add(T& proto = T()) {
+	ID add(const T& proto = T()) {
 		Index &in = mIndices[mFreelistDequeue];
 		mFreelistDequeue = in.next;
 		// NB: id is now incremented on entity removal
 		// in.id += NEW_OBJECT_ID_ADD;		
 		in.index = mNumObjects++;
+		mObjects.set(in.index, proto);
 		T &o = mObjects.get(in.index);
 		// TODO: Do we need to call reset?
 		// Call system::reset(id) 
 		// o.reset();
-		o = proto;
+		// o = proto;
 		o.id = in.id;
 		return o.id;
 	}
@@ -133,21 +102,30 @@ public:
 	void remove(ID id) {
 		Index &in = mIndices[id&INDEX_MASK];
 		T &o = mObjects.get(in.index);
-		// increment the version number for next time
+		// increment the version number to avoid ID conflicts
 		in.id += NEW_OBJECT_ID_ADD;
 		// NB: struct copy here
-		o = mObjects.get(--mNumObjects);
+		// Copy object from end to here
+		// TODO: Should do a move instead?
+		o = mObjects.get(mNumObjects - 1);
+		// Call destructor of object at end
+		// Just in case it needs to clean up
+
+		// XXX: This crashes the system when picking up an entity (sprite destructor?)
+		mObjects.get(mNumObjects - 1).~T();
+		mNumObjects--;
+
 		mIndices[o.id&INDEX_MASK].index = in.index;
 		in.index = USHRT_MAX;
 		mIndices[mFreelistEnqueue].next = id&INDEX_MASK;
 		mFreelistEnqueue = id&INDEX_MASK;
 	}
-	
+
 	StaticArray<T>& objects(){
 		return mObjects;
 	}
 
-	int size(){
+	unsigned int size(){
 		return mNumObjects;
 	}
 
@@ -163,7 +141,7 @@ public:
 	}
 
 protected:
-	static const int MAX_OBJECTS = 0xffff;
+	static const int MAX_OBJECTS = 0x10000; //  0xffff;
 	static const int INDEX_MASK = 0xffff;
 	static const int NEW_OBJECT_ID_ADD = 0x10000;
 
@@ -174,12 +152,13 @@ protected:
 		uint16 next;
 	};
 
-	unsigned mNumObjects;
+	unsigned int mNumObjects;
 	StaticArray<T> mObjects;
 	Index mIndices[MAX_OBJECTS];
 
 	uint16 mFreelistEnqueue;
 	uint16 mFreelistDequeue;
 };
+
 
 #endif

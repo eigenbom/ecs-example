@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdlib>
 #include <ctime>
+#include <chrono>
 
 #include "packedarray.h"
 #include "entity.h"
@@ -111,8 +112,292 @@ template <typename First, typename... Rest> void AttachEntityToSystem(Entity& e,
 	}
 }
 
+template <typename T>
+double testVectorCreation(std::chrono::high_resolution_clock& clock, int sz){
+	auto t1 = clock.now();
+	std::vector<T> v(sz);
+	auto t2 = clock.now();
+	std::chrono::duration<double> timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);	
+	return timeSpan.count();	
+}
 
-int main(int argc, char** argv[])
+using Type = int;
+
+struct SomeData {
+	Type t;
+};
+
+struct SomeData2 {
+	Type t;
+	SomeData2(){}
+};
+
+struct BaseData {
+	int whatever;
+};
+
+struct SomeData3: public BaseData{
+	Type t;
+};
+
+struct BaseData2 {
+	int whatever;
+};
+
+struct SomeData4 : public BaseData2{
+	Type t;
+	SomeData4(){}
+};
+
+struct BaseData3 {
+	int whatever;
+	BaseData3(){}
+};
+
+struct SomeData5: public BaseData3{
+	// std::vector<SomeData5> doesn't initialise all emptys
+  // so creation is FAST
+	Type t;
+
+	// std::vector<Type> ts; // slows down
+	std::array<unsigned char, 8> a; // its ok
+
+	struct InternalStruct {
+		int x;
+	} is; // seems to be ok!
+
+	/*
+	struct InternalStruct2 {
+		int x;
+		InternalStruct2():x(0){}
+	} is2; 
+	// slows down vec tests
+	*/
+
+	struct InternalStruct3 {
+		int x;
+		InternalStruct3(){}
+	} is3; // still good
+
+	// Some managed thing...
+	InternalStruct3* pis3;
+	// shared_ptr<InternalStruct3> pis3; // slows down vec tests
+
+	SomeData5():BaseData3(){} // Need blank constructor for vector tests, but not for MyVec tests..
+	SomeData5(Type t):t(t),BaseData3(){}
+	SomeData5(const SomeData5& sd){
+		t = sd.t;
+	}
+	SomeData5(SomeData5&& sd){
+		std::cout << "SomeData5 rvalue copy constructor called\n";
+		// should swap the managed thing..
+
+		// std::swap();
+		t = sd.t;
+	}
+};
+
+
+
+struct NonCopyable {
+protected:
+	NonCopyable() = default;
+	~NonCopyable() = default;
+private:
+	NonCopyable(const NonCopyable&){};
+	NonCopyable& operator=(const NonCopyable& d){};
+};
+
+struct Data : public BaseData3, NonCopyable {	
+	int t;	
+	std::array<unsigned char, 8> a; // its ok
+
+	struct Foo {
+		int x;
+	} is;
+
+	// Some managed thing...
+  // InternalStruct* pis3;
+	// std::unique_ptr<Foo> pfoo; // slows down vec tests
+	Foo* pfoo;
+
+	// What happens with a vector<>
+	std::vector<int> data;
+
+	struct Something {
+		Something(){}
+		~Something(){
+			std::cout << "Deleting something.\n";
+		}
+	} something;
+
+	// Always need a default constructor?	
+	Data(int _t = 0) :BaseData3(), NonCopyable(), data(_t){
+		std::cout << "new Foo\n";
+		pfoo = new Foo(); 
+		pfoo->x = _t;
+		t = _t;
+		for (int i = 0; i < data.size(); i++){
+			data[i] = t + i;
+		}
+	};
+
+	~Data(){
+		std::cout << "delete Foo\n";
+		delete pfoo;
+
+		// Because the memory may still be around
+		// we need to null things to be safe
+		// even though the user should maintain a 
+		// list of which things are valid..
+		pfoo = nullptr;
+
+		// Don't have to delete data?
+		// data.~vector();
+	}
+	
+	Data(Data&& d){
+		// swap uses move
+		// semantics where available
+		std::swap(pfoo, d.pfoo);
+		std::swap(data, d.data);
+		std::swap(t, d.t);
+	}
+};
+
+// A simple vector class that doesn't initialise its entries
+// The idea is that the user appropriately initialises things
+template <typename T>
+class MyVec {
+public:		
+	using value_type = T;
+	static const size_t value_type_size = sizeof(T);
+	MyVec(int size):mSize(size),mData(size*value_type_size){}	
+	size_t size() const { return mSize; }
+
+	// Warning this is going to be uninitialised
+	// So who knows what will happen when copying etc
+	T& operator[](unsigned int index){
+		return *reinterpret_cast<T*>(&mData[index*value_type_size]);
+	}
+
+protected:
+	// Need to use a struct with a blank constructor 
+	// to avoid initialization
+	struct uninitialized_char { unsigned char c; uninitialized_char(){} };
+	static_assert(1 == sizeof(uninitialized_char), "");
+	size_t mSize;
+	std::vector<uninitialized_char> mData; // just some bytes 
+
+	// Another way to handle the bytes
+	// std::unique_ptr<char[]>();
+};
+
+
+double testNonVectorCreation(std::chrono::high_resolution_clock& clock, int sz){
+	auto t1 = clock.now();
+	MyVec<Data> v(sz);
+	auto t2 = clock.now();
+	std::chrono::duration<double> timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
+
+	// Access uninitialised stuff
+	// Seems to be all zeros..
+	std::cout << "Check initial values\n";
+	for (int i = 0; i < sz; i+=sz/10){
+		std::cout << "[" << i << "]    ";
+		std::cout << "0x" << v[i].pfoo << "\n";
+	}
+	std::cout << "\n";
+	
+	// Construct (using in-place new)	
+	// And remember which things are constructed...
+	std::vector<int> constructed;
+	std::cout << "Construct\n";
+	for (int i = 0; i < sz; i += sz/10){
+		std::cout << "[" << i << "]    ";
+		new(&v[i])Data(i%7);
+		std::cout << "0x" << v[i].pfoo << "->x = " << v[i].pfoo->x << "\n";
+		constructed.push_back(i);
+	}
+	std::cout << "\n";
+
+	// Move constructor (rvalue?)
+	std::cout << "Move construct\n";
+	for (int i = 1; i < sz - 1; i += sz / 10){
+		std::cout << "[" << i << "]    ";
+		new(&v[i])Data(std::move(v[i - 1]));
+		std::cout << "0x" << v[i].pfoo << " <-> 0x" << v[i - 1].pfoo << "\n";
+
+		// Update constructed list..
+		std::replace(constructed.begin(), constructed.end(), i-1, i);
+	}
+	std::cout << "\n";
+
+	// Destructor
+	std::cout << "Destruct\n";
+	for (int i: constructed){
+		std::cout << "[" << i << "]    \n";
+		// Explicitly destroy
+		std::cout << "  before = 0x" << v[i].pfoo << "\n";
+		std::cout << "       vec 0x" << v[i].data.data() << "\n";
+
+		v[i].~Data();
+		std::cout << "  after  = 0x" << v[i].pfoo << "\n";
+		std::cout << "       vec 0x" << v[i].data.data() << "\n";
+	}
+	std::cout << "\n";
+
+	// Call assignment operators 
+	/*
+	for (int i = 0; i < sz-1; i += sz / 10){
+		v[i] = v[i + 1];
+		std::cout << v[i].t << " ";
+	}
+	std::cout << "\n";
+	*/
+
+	// v[2] = v[3];
+
+	// In-place new...?
+
+	return timeSpan.count();
+}
+
+int main(int argc, char** argv[]){
+	// Test speed of initialisation
+	auto clock = std::chrono::high_resolution_clock();	
+	
+	const int NUM_ELEMENTS = 1<<24;
+
+	// Just do the single test
+	double s = testNonVectorCreation(clock, NUM_ELEMENTS);
+	std::cout << "  [test] took " << (1000*s) << "ms\n";
+
+	/*
+	const int NUM_TESTS = 16;
+	static const int NUM_RESULTS = 7;
+	double results[NUM_RESULTS] = { 0, 0, 0 };
+	for (int i = 0; i < NUM_TESTS; i++){
+		std::cout << ".";
+		results[0] += testVectorCreation<Type>(clock, NUM_ELEMENTS);
+		results[1] += testVectorCreation<SomeData>(clock, NUM_ELEMENTS);
+		results[2] += testVectorCreation<SomeData2>(clock, NUM_ELEMENTS);
+		results[3] += testVectorCreation<SomeData3>(clock, NUM_ELEMENTS);
+		results[4] += testVectorCreation<SomeData4>(clock, NUM_ELEMENTS);
+		results[5] += testVectorCreation<SomeData5>(clock, NUM_ELEMENTS);
+		results[6] += testNonVectorCreation(clock, NUM_ELEMENTS);
+	}
+
+	std::cout << "\nResults\n";
+	for (int i = 0; i < NUM_RESULTS; i++){
+		std::cout << "  [test " << i << "] took " << (1000*(results[i] / NUM_TESTS)) << "ms\n";
+	}*/
+
+	return EXIT_SUCCESS;	
+}
+
+
+int main2(int argc, char** argv[])
 {
 	std::srand((unsigned int)std::time(NULL));
 
@@ -142,9 +427,19 @@ int main(int argc, char** argv[])
 	}	
 	es.sync();
 
+	// Test move semantics etc
+
+
+
+
+	/*
+
 	// component access shorthand
 	es.lookup(id).transform() = vec2{ 0, 0 };
 	es.lookup(id).physics().vx *= 0.9f; // slow down
+
+	// check validity of component
+	std::cout << boolalpha << (bool)(es.lookup(id).get<Inventory>()) << "\n";
 	
 	// test if entity removal signals systems
 	es.remove(id);
@@ -152,6 +447,7 @@ int main(int argc, char** argv[])
 
 	es.printDebugInfo(std::cout);
 
+	*/
 
 	/*
 	std::cout << "Test entity creation\n";
