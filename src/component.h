@@ -30,6 +30,10 @@ struct Component : public BaseComponent {
 		assert(index < MAX_COMPONENTS);
 		return index;
 	}
+
+	operator bool(){
+		return id!=INVALID_ID;
+	}
 };
 
 
